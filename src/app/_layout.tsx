@@ -3,7 +3,7 @@ import { Stack } from "expo-router";
 export default function RootLayout() {
   return (
     <Stack
-      initialRouteName="home"
+      initialRouteName="request"
       screenOptions={{
         headerShown: false,
         contentStyle: { backgroundColor: "#EBF1F5" },
@@ -18,7 +18,8 @@ export default function RootLayout() {
       />
       <Stack.Screen name="verifyEmail" options={{ title: "Verify Email" }} />
       <Stack.Screen name="newPassword" options={{ title: "New Password" }} />
-      <Stack.Screen name="home" options={{ title: "Home" }} />
+      <Stack.Screen name="request" options={{ title: "Request" }} />
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
     </Stack>
   );
 }

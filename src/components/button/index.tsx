@@ -14,7 +14,8 @@ type Props = {
   children: ReactNode;
   containerStyle?: StyleProp<ViewStyle>;
   textStyle?: StyleProp<TextStyle>;
-  onPress?: () => {};
+  onPress?: () => void;
+  disabled?: boolean;
 };
 
 export const AppButton = ({
@@ -23,9 +24,10 @@ export const AppButton = ({
   containerStyle,
   textStyle,
   onPress,
+  disabled = false,
 }: Props) => {
   return (
-    <TouchableOpacity onPress={onPress}>
+    <TouchableOpacity onPress={onPress} disabled={disabled}>
       <View style={[styles.button, styles[type], containerStyle]}>
         <Text
           style={[
