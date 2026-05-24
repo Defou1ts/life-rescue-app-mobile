@@ -1,54 +1,63 @@
 import { useSignIn } from "@/api/hooks/useSignIn";
+import { AppText } from "@/components/app-text";
 import { AppButton } from "@/components/button";
-import { ErrorLoading } from "@/components/error";
 import { Input } from "@/components/input";
 import { Loading } from "@/components/loading";
 import { Title } from "@/components/Title";
 import { UnderlinedButton } from "@/components/underlined-text";
+import { useLocalSearchParams, useNavigation } from "expo-router";
+
 import React from "react";
 import { Controller, useForm } from "react-hook-form";
 import { StyleSheet, Text, View } from "react-native";
 
-type SignInFormData = {
-  email: string;
-  password: string;
+type VerifyEmailFormData = {
+  verificationCode: string;
 };
 
-export default function SignIn() {
-  const { mutate, isPending, isSuccess, isError } = useSignIn();
+export default function VerifyEmail() {
+  const { mutate, isPending, isError, error } = useSignIn();
+
+  const local = useLocalSearchParams();
+
+  const navigation = useNavigation();
+  const email = local.email as string;
+  const password = local.password as string;
 
   const {
     control,
     handleSubmit,
     formState: { errors },
-  } = useForm<SignInFormData>({
+  } = useForm<VerifyEmailFormData>({
     defaultValues: {
-      email: "",
-      password: "",
+      verificationCode: "",
     },
   });
 
-  const onSubmit = (data: SignInFormData) => {
-    mutate(data);
+  const onSubmit = (data: VerifyEmailFormData) => {
+    mutate({ email: email, token: data.verificationCode, password });
   };
 
   return (
     <View style={styles.container}>
+      <View style={{ marginBottom: 13 }}>
+        <Title>Verification</Title>
+      </View>
       <View style={{ marginBottom: 70 }}>
-        <Title>Welcome Back</Title>
+        <AppText>We’ve sent a 4-digit code to {email}</AppText>
       </View>
 
       <View style={styles.inputsContainer}>
         <View>
           <Controller
             control={control}
-            name="email"
+            name="verificationCode"
             rules={{
-              required: "Email is required",
+              required: "Verification Code is required",
             }}
             render={({ field: { onChange, value } }) => (
               <Input
-                placeholder="Email"
+                placeholder="Verification Code"
                 value={value}
                 onChangeText={onChange}
                 autoCapitalize="none"
@@ -57,50 +66,30 @@ export default function SignIn() {
             )}
           />
 
-          {errors.email && (
-            <Text style={styles.errorText}>{errors.email.message}</Text>
+          {errors.verificationCode && (
+            <Text style={styles.errorText}>
+              {errors.verificationCode.message}
+            </Text>
           )}
         </View>
-
-        <View>
-          <Controller
-            control={control}
-            name="password"
-            rules={{
-              required: "Password is required",
-              minLength: {
-                value: 6,
-                message: "Minimum 6 characters",
-              },
-            }}
-            render={({ field: { onChange, value } }) => (
-              <Input
-                placeholder="Password"
-                secure
-                value={value}
-                onChangeText={onChange}
-              />
-            )}
-          />
-
-          {errors.password && (
-            <Text style={styles.errorText}>{errors.password.message}</Text>
-          )}
-        </View>
-        {isPending && <Loading />}
-        {isError && <ErrorLoading>Invalid email or password</ErrorLoading>}
-        <UnderlinedButton fontWeight="regular" style={{ marginTop: 20 }}>
-          Forgot Password?
-        </UnderlinedButton>
       </View>
-
+      {isPending && <Loading />}
       <AppButton
         containerStyle={{ marginTop: 27 }}
         type="primary"
         onPress={handleSubmit(onSubmit)}
       >
-        Log In
+        Continue
       </AppButton>
+      <UnderlinedButton
+        onPress={() => {
+          navigation.goBack();
+        }}
+        fontWeight="bold"
+        style={{ marginTop: 20 }}
+      >
+        Go back
+      </UnderlinedButton>
     </View>
   );
 }

@@ -1,11 +1,30 @@
 import { AppButton } from "@/components/button";
+import { useAuth } from "@/hooks/useAuth";
 import { Image } from "expo-image";
-import { useNavigation } from "expo-router";
-import { StyleSheet, View } from "react-native";
+import { Redirect, useNavigation } from "expo-router";
+import { ActivityIndicator, StyleSheet, View } from "react-native";
 const Logo = require("@/assets/images/logo.png");
-
 export default function Index() {
+  const { isAuthorized, isLoading } = useAuth();
   const navigation = useNavigation();
+
+  if (isLoading) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+        }}
+      >
+        <ActivityIndicator size="large" />
+      </View>
+    );
+  }
+
+  if (isAuthorized) {
+    return <Redirect href="/(tabs)" />;
+  }
 
   const handleCreateAccountPress = () => {
     navigation.navigate("signUp");

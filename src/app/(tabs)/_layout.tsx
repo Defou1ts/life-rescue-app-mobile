@@ -1,7 +1,29 @@
+import { useAuth } from "@/hooks/useAuth";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
-import { Tabs } from "expo-router";
+import { Redirect, Tabs } from "expo-router";
+import { ActivityIndicator, View } from "react-native";
 
 export default function TabLayout() {
+  const { isAuthorized, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+        }}
+      >
+        <ActivityIndicator size="large" />
+      </View>
+    );
+  }
+
+  if (!isAuthorized) {
+    return <Redirect href="/signIn" />;
+  }
+
   return (
     <Tabs
       screenOptions={{
@@ -22,6 +44,7 @@ export default function TabLayout() {
           ),
         }}
       />
+
       <Tabs.Screen
         name="index"
         options={{
@@ -31,6 +54,7 @@ export default function TabLayout() {
           ),
         }}
       />
+
       <Tabs.Screen
         name="settings"
         options={{
