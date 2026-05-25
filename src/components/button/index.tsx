@@ -45,7 +45,7 @@ export const AppButton = ({
 };
 const styles = StyleSheet.create({
   button: {
-    borderRadius: 250,
+    borderRadius: 555,
     paddingVertical: 22,
     paddingHorizontal: 9,
     fontFamily: "Inter",

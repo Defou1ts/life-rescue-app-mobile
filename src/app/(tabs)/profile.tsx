@@ -53,7 +53,7 @@ export default function PRofile() {
       </View>
       <BottomSheet
         ref={sheetRef}
-        snapPoints={["25%", "50%", "90%"]}
+        snapPoints={["50%", "100%"]}
         index={-1}
         onChange={(index) => {
           console.log("onChange", index);
@@ -63,8 +63,49 @@ export default function PRofile() {
         }}
         enablePanDownToClose
       >
-        <BottomSheetView style={{ flex: 1, padding: 24, alignItems: "center" }}>
-          <Text>Sheet content</Text>
+        <BottomSheetView style={{ flex: 1, padding: 28 }}>
+          <View style={styles.infoWrapper}>
+            <View style={styles.infoHeader}>
+              <Text style={styles.infoHeaderText}>Allergy</Text>
+              <Text style={styles.infoHeaderText}>&mdash;</Text>
+            </View>
+            <View style={styles.infoContent}>
+              {[
+                allergiesData.length === 0
+                  ? { id: "default", name: "No allergies" }
+                  : null,
+                ...allergiesData,
+              ]?.map((allergy) => {
+                if (!allergy) return null;
+                return (
+                  <Text style={styles.infoText} key={allergy.id}>
+                    {allergy.name}
+                  </Text>
+                );
+              })}
+            </View>
+          </View>
+          <View style={styles.infoWrapper}>
+            <View style={styles.infoHeader}>
+              <Text style={styles.infoHeaderText}>Disease</Text>
+              <Text style={styles.infoHeaderText}>&mdash;</Text>
+            </View>
+            <View style={styles.infoContent}>
+              {[
+                diseasesData.length === 0
+                  ? { id: "default", name: "No diseases" }
+                  : null,
+                ...diseasesData,
+              ]?.map((disease) => {
+                if (!disease) return null;
+                return (
+                  <Text style={styles.infoText} key={disease.id}>
+                    {disease.name}
+                  </Text>
+                );
+              })}
+            </View>
+          </View>
         </BottomSheetView>
       </BottomSheet>
     </View>
@@ -91,5 +132,54 @@ const styles = StyleSheet.create({
     color: "#0D9488",
     textAlign: "center",
     marginBottom: 50,
+  },
+  infoWrapper: {
+    marginBottom: 30,
+    borderRadius: 45,
+    backgroundColor: "#EBF1F5",
+    shadowColor: "#000",
+    padding: 20,
+    shadowOffset: {
+      width: 4,
+      height: 4,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+
+    elevation: 10,
+  },
+  infoHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    color: "#0D9488",
+  },
+  infoHeaderText: {
+    fontSize: 25,
+    fontFamily: "Inter",
+    color: "#0D9488",
+    fontWeight: "bold",
+  },
+  infoContent: {
+    paddingVertical: 18,
+    paddingHorizontal: 12,
+
+    backgroundColor: "#EBF1F5",
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 4,
+      height: 4,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+
+    elevation: 10,
+    borderRadius: 25,
+  },
+  infoText: {
+    fontSize: 25,
+    fontFamily: "Inter",
+    color: "#0D9488",
+    fontWeight: "light",
   },
 });
