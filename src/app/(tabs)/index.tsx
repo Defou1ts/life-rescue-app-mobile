@@ -13,6 +13,7 @@ import { EmergencyMap } from "@/components/emergency-map";
 import { Loading } from "@/components/loading";
 import { LoadingScreen } from "@/components/loading-screen";
 import { Title } from "@/components/Title";
+import { useUserLocation } from "@/hooks/useUserLocation";
 import { signalRService } from "@/services/signalr";
 import { extractEmergencySelections } from "@/utils/emergency";
 import BottomSheet, { BottomSheetView } from "@expo/ui/community/bottom-sheet";
@@ -30,50 +31,6 @@ import {
   View,
 } from "react-native";
 
-/**
- * MOCK DATA (потом заменишь на API)
- */
-const MAIN_ISSUES = [
-  { id: "injury", name: "Injury or Trauma" },
-  { id: "breathing", name: "Difficulty Breathing" },
-  { id: "allergy", name: "Allergic Reaction" },
-  { id: "chest", name: "Chest Pain / Heart Issue" },
-  { id: "unconscious", name: "Unconscious" },
-  { id: "other", name: "Other" },
-];
-
-const SYMPTOMS = [
-  { id: "bleeding", name: "Heavy bleeding" },
-  { id: "pain", name: "Severe pain" },
-  { id: "breath", name: "Difficulty breathing" },
-  { id: "dizzy", name: "Dizziness or confusion" },
-  { id: "weakness", name: "Numbness or weakness" },
-];
-
-const CONDITIONS = [
-  { id: "allergy", name: "Drug Allergies" },
-  { id: "heart", name: "Heart Disease" },
-  { id: "diabetes", name: "Diabetes" },
-  { id: "asthma", name: "Asthma or Lung Disease" },
-  { id: "pregnancy", name: "Pregnancy" },
-  { id: "none", name: "None or Unknown" },
-];
-
-const MEDICS = [
-  {
-    latitude: 52.2299,
-    longitude: 21.0122,
-  },
-  {
-    latitude: 52.2315,
-    longitude: 21.0151,
-  },
-  {
-    latitude: 52.2281,
-    longitude: 21.0088,
-  },
-];
-
 type FormValues = {
   mainIssue: string | null;
   symptoms: string[];
@@ -84,8 +41,13 @@ export default function Home() {
   const { data: subscriptionData, isLoading: isHasSubscriptionLoading } =
     useHasSubscription();
 
-  const { data: paramedicsNearby, isPending: isLoadingParamedicsNearby } =
-    useParamedicsNearby();
+  const { userLocation } = useUserLocation();
+
+  const {
+    data: paramedicsNearby,
+    isPending: isLoadingParamedicsNearby,
+    mutateAsync: fetchParamedics,
+  } = useParamedicsNearby();
 
   const [ratingModalVisible, setRatingModalVisible] = useState(false);
 
@@ -96,6 +58,15 @@ export default function Home() {
   const [finishedEmergencyId, setFinishedEmergencyId] = useState<string | null>(
     null,
   );
+
+  useEffect(() => {
+    if (userLocation) {
+      fetchParamedics({
+        latitude: userLocation?.latitude,
+        longitude: userLocation?.longitude,
+      });
+    }
+  }, [userLocation]);
 
   const { mutateAsync: rateEmergency, isPending: isRatingLoading } =
     useRateEmergency();
@@ -132,11 +103,17 @@ export default function Home() {
     isPending: isLoadingActiveEmergencyRequest,
   } = useGetActiveEmergencyRequest();
 
-  console.log(activeEmergencyRequest);
-
   const [selectedAnswerId, setSelectedAnswerId] = useState<string | null>(null);
 
   const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
+
+  const [symptomSelections, setSymptomSelections] = useState<{
+    questionIds: string[];
+    answerIds: string[];
+  }>({ questionIds: [], answerIds: [] });
+
+  const latestSymptomSelectionsRef = useRef(symptomSelections);
+  const latestUserLocationRef = useRef(userLocation);
 
   const [history, setHistory] = useState<
     {
@@ -144,6 +121,55 @@ export default function Home() {
       answerId: string;
     }[]
   >([]);
+
+  useEffect(() => {
+    latestSymptomSelectionsRef.current = symptomSelections;
+  }, [symptomSelections]);
+
+  useEffect(() => {
+    latestUserLocationRef.current = userLocation;
+  }, [userLocation]);
+
+  useEffect(() => {
+    if (!activeEmergencyRequest) {
+      setSymptomSelections({ questionIds: [], answerIds: [] });
+      return;
+    }
+
+    const extracted = extractEmergencySelections(activeEmergencyRequest);
+    setSymptomSelections({
+      questionIds: extracted.questionIds,
+      answerIds: extracted.answerIds,
+    });
+  }, [activeEmergencyRequest?.id]);
+
+  useEffect(() => {
+    if (!activeEmergencyRequest) {
+      return;
+    }
+
+    const intervalId = setInterval(() => {
+      const loc = latestUserLocationRef.current;
+      if (!loc) {
+        return;
+      }
+
+      const selections = latestSymptomSelectionsRef.current;
+
+      signalRService
+        .sendEmergencyUpdate({
+          initiatorLocation: {
+            latitude: loc.latitude,
+            longitude: loc.longitude,
+          },
+          symptomQuestionsIds: selections.questionIds,
+          symptomAnswerOptionsIds: selections.answerIds,
+        })
+        .catch((error) => console.log("EMERGENCY_AUTO_UPDATE_ERROR", error));
+    }, 30_000);
+
+    return () => clearInterval(intervalId);
+  }, [activeEmergencyRequest?.id]);
 
   const { data: answers, isLoading: isLoadingAnswers } =
     useGetAnswersByQuestionId(currentQuestion?.id ?? "", {
@@ -236,9 +262,7 @@ export default function Home() {
             </AppText>
           </View>
 
-          <View style={styles.imageContainer}>
-            <EmergencyMap />
-          </View>
+            <EmergencyMap activeEmergency={activeEmergencyRequest} />
         </View>
       </View>
 
@@ -250,41 +274,29 @@ export default function Home() {
               type="outline"
               containerStyle={{ marginTop: 27 }}
               onPress={() => {
-                /**
-                 * existing symptom tree
-                 */
                 const existingRoot = activeEmergencyRequest?.symptomTree?.[0];
 
-                if (existingRoot) {
+                /**
+                 * Always start from scratch on "Update Symptoms":
+                 * backend treats update as PUT (full replace), so we shouldn't
+                 * carry over old answers into the new payload.
+                 */
+                if (rootEmergencyQuestion) {
+                  setCurrentQuestion(rootEmergencyQuestion);
+                } else if (existingRoot) {
                   setCurrentQuestion({
                     id: existingRoot.questionId,
                     text: existingRoot.questionText,
                     questionType: "Single",
                     parentAnswerId: "",
                   });
-
-                  setHistory([]);
-
-                  setSelectedAnswerId(null);
-
-                  sheetRef.current?.expand();
-
+                } else {
                   return;
                 }
 
-                /**
-                 * empty symptom tree
-                 * start questionnaire from scratch
-                 */
-                if (rootEmergencyQuestion) {
-                  setCurrentQuestion(rootEmergencyQuestion);
-
-                  setHistory([]);
-
-                  setSelectedAnswerId(null);
-
-                  sheetRef.current?.expand();
-                }
+                setHistory([]);
+                setSelectedAnswerId(null);
+                sheetRef.current?.expand();
               }}
             >
               Update Symptoms
@@ -394,45 +406,35 @@ export default function Home() {
                        * END OF TREE
                        */
                       if (error?.response?.status === 404) {
-                        const hasExistingTree =
-                          activeEmergencyRequest?.symptomTree?.length;
-
-                        const existingSelections = hasExistingTree
-                          ? extractEmergencySelections(activeEmergencyRequest!)
-                          : {
-                              questionIds: [],
-                              answerIds: [],
-                            };
-
                         const updatedQuestionIds = [
-                          ...existingSelections.questionIds,
-
                           ...history.map((item) => item.question.id),
-
                           currentQuestion.id,
                         ];
 
                         const updatedAnswerIds = [
-                          ...existingSelections.answerIds,
-
                           ...history.map((item) => item.answerId),
-
                           selectedAnswerId,
                         ];
 
                         await signalRService.sendEmergencyUpdate({
                           initiatorLocation: {
                             latitude:
+                              latestUserLocationRef.current?.latitude ??
                               activeEmergencyRequest.initiatorLocation.latitude,
 
                             longitude:
-                              activeEmergencyRequest.initiatorLocation
-                                .longitude,
+                              latestUserLocationRef.current?.longitude ??
+                              activeEmergencyRequest.initiatorLocation.longitude,
                           },
 
                           symptomQuestionsIds: updatedQuestionIds,
 
                           symptomAnswerOptionsIds: updatedAnswerIds,
+                        });
+
+                        setSymptomSelections({
+                          questionIds: updatedQuestionIds,
+                          answerIds: updatedAnswerIds,
                         });
 
                         sheetRef.current?.close();
@@ -567,10 +569,6 @@ const styles = StyleSheet.create({
   },
 
   mapContainer: {
-    paddingVertical: 16,
-    paddingHorizontal: 8,
-    borderColor: "#000",
-    borderWidth: 1,
     borderRadius: 45,
     alignItems: "center",
     gap: 9,

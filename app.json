@@ -17,10 +17,7 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "permissions": [
-        "ACCESS_FINE_LOCATION",
-        "ACCESS_FINE_LOCATION"
-      ],
+      "permissions": ["ACCESS_FINE_LOCATION", "ACCESS_FINE_LOCATION"],
       "predictiveBackGestureEnabled": false,
       "config": {
         "googleMaps": {
@@ -45,6 +42,13 @@
           }
         }
       ],
+      [
+        "react-native-maps",
+        {
+          "androidGoogleMapsApiKey": "AIzaSyCstVsi6f2OYl9ayRo8YKlVsigtamACL9w"
+        }
+      ],
+
       "expo-font",
       "expo-secure-store",
       "expo-image",

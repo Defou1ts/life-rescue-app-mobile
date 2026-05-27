@@ -101,9 +101,16 @@ class SignalRService {
     this.connection = null;
   }
 
-  async sendEmergencyUpdate(payload: any) {
+  async sendEmergencyUpdate(payload: {
+    initiatorLocation: { latitude: number; longitude: number };
+    symptomQuestionsIds: string[];
+    symptomAnswerOptionsIds: string[];
+  }) {
     const connection = await this.startConnection();
-
+    console.log("PAYLOAD", payload);
+    // SignalR JS client expects: invoke(methodName, ...args)
+    // Postman sends an envelope with `target`/`arguments`, but from the client
+    // we should call the hub method directly.
     await connection.invoke("SendEmergencyUpdate", payload);
   }
 }
