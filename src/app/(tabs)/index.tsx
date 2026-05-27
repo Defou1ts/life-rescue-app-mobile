@@ -103,6 +103,7 @@ export default function Home() {
     isPending: isLoadingActiveEmergencyRequest,
   } = useGetActiveEmergencyRequest();
 
+
   const [selectedAnswerId, setSelectedAnswerId] = useState<string | null>(null);
 
   const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
@@ -262,7 +263,7 @@ export default function Home() {
             </AppText>
           </View>
 
-            <EmergencyMap activeEmergency={activeEmergencyRequest} />
+          <EmergencyMap activeEmergency={activeEmergencyRequest} />
         </View>
       </View>
 
@@ -424,7 +425,8 @@ export default function Home() {
 
                             longitude:
                               latestUserLocationRef.current?.longitude ??
-                              activeEmergencyRequest.initiatorLocation.longitude,
+                              activeEmergencyRequest.initiatorLocation
+                                .longitude,
                           },
 
                           symptomQuestionsIds: updatedQuestionIds,

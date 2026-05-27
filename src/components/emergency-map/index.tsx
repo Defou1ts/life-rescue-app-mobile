@@ -6,7 +6,7 @@ import { useUserLocation } from "@/hooks/useUserLocation";
 
 import { signalRService } from "@/services/signalr";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
@@ -113,125 +113,90 @@ export const EmergencyMap = ({ activeEmergency }: Props) => {
     return `${etaMinutes}-${etaMinutes + 3} min`;
   };
 
-  if (loading || isPending || !userLocation) {
+  const html = useMemo(() => {
+    if (!userLocation) {
+      return null;
+    }
+
+    const nearbyMarkersJS = nearbyMedics
+      .map(
+        (medic) => `
+        L.marker([${medic.latitude}, ${medic.longitude}])
+          .addTo(map)
+          .bindPopup('Nearby paramedic');
+      `,
+      )
+      .join("\n");
+
+    const activeParamedicJS =
+      activeEmergency && paramedicLocation
+        ? `
+        L.marker([${paramedicLocation.latitude}, ${paramedicLocation.longitude}])
+          .addTo(map)
+          .bindPopup('Assigned paramedic');
+
+        var routeLine = L.polyline([
+          [${userLocation.latitude}, ${userLocation.longitude}],
+          [${paramedicLocation.latitude}, ${paramedicLocation.longitude}]
+        ], { color: '#0D9488', weight: 4 }).addTo(map);
+
+        map.fitBounds(routeLine.getBounds(), { padding: [40, 40] });
+      `
+        : "";
+
+    /**
+     * Always show nearby medics.
+     * When activeEmergency exists and paramedicLocation arrives — also draw
+     * the assigned paramedic marker + route line on top.
+     */
+    const markersJS = `${nearbyMarkersJS}\n${activeParamedicJS}`;
+
+    return `<!DOCTYPE html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+      html, body, #map { margin: 0; padding: 0; width: 100%; height: 100%; }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+      var map = L.map('map', { zoomControl: false })
+        .setView([${userLocation.latitude}, ${userLocation.longitude}], 12);
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(map);
+
+      L.marker([${userLocation.latitude}, ${userLocation.longitude}])
+        .addTo(map)
+        .bindPopup('You')
+        .openPopup();
+
+      ${markersJS}
+    </script>
+  </body>
+</html>`;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    userLocation?.latitude,
+    userLocation?.longitude,
+    nearbyMedics,
+    activeEmergency?.id,
+    paramedicLocation?.latitude,
+    paramedicLocation?.longitude,
+  ]);
+
+  if (loading || isPending || !userLocation || !html) {
     return (
       <View style={styles.loader}>
         <ActivityIndicator size="large" />
       </View>
     );
   }
-
-  const nearbyMarkersJS = nearbyMedics
-    .map(
-      (medic) => `
-      L.marker([
-        ${medic.latitude},
-        ${medic.longitude}
-      ])
-      .addTo(map)
-      .bindPopup('Nearby paramedic');
-    `,
-    )
-    .join("\n");
-
-  const activeParamedicJS = paramedicLocation
-    ? `
-      const paramedicMarker = L.marker([
-        ${paramedicLocation.latitude},
-        ${paramedicLocation.longitude}
-      ])
-      .addTo(map)
-      .bindPopup('Assigned paramedic');
-
-      const routeLine = L.polyline([
-        [
-          ${userLocation.latitude},
-          ${userLocation.longitude}
-        ],
-        [
-          ${paramedicLocation.latitude},
-          ${paramedicLocation.longitude}
-        ]
-      ], {
-        color: '#0D9488',
-        weight: 4
-      }).addTo(map);
-
-      map.fitBounds(routeLine.getBounds(), {
-        padding: [40, 40]
-      });
-    `
-    : "";
-
-  const html = `
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <meta
-          name="viewport"
-          content="width=device-width, initial-scale=1.0"
-        />
-
-        <link
-          rel="stylesheet"
-          href="https://unpkg.com/leaflet/dist/leaflet.css"
-        />
-
-        <style>
-          html,
-          body,
-          #map {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-          }
-        </style>
-      </head>
-
-      <body>
-        <div id="map"></div>
-
-        <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-
-        <script>
-          const userLat =
-            ${userLocation.latitude};
-
-          const userLng =
-            ${userLocation.longitude};
-
-          const map = L.map(
-            'map',
-            {
-              zoomControl: false
-            }
-          ).setView(
-            [userLat, userLng],
-            12
-          );
-
-          L.tileLayer(
-            'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-            {
-              attribution:
-                '© OpenStreetMap contributors'
-            }
-          ).addTo(map);
-
-          L.marker([
-            userLat,
-            userLng
-          ])
-          .addTo(map)
-          .bindPopup('You')
-          .openPopup();
-
-          ${activeEmergency ? activeParamedicJS : nearbyMarkersJS}
-        </script>
-      </body>
-    </html>
-  `;
 
   return (
     <View style={styles.container}>
@@ -240,6 +205,8 @@ export const EmergencyMap = ({ activeEmergency }: Props) => {
         originWhitelist={["*"]}
         source={{ html }}
         style={styles.map}
+        javaScriptEnabled
+        domStorageEnabled
       />
 
       {activeEmergency && estimatedArrival && (

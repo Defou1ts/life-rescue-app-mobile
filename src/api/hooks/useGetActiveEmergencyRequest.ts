@@ -43,7 +43,6 @@ export const useGetActiveEmergencyRequest = () => {
     queryFn: async () => {
       const response =
         await axiosInstance.get<ActiveEmergency>("/emergency/ongoing");
-        console.log(response.data);
       if (response.status === 200) return response.data;
     },
     refetchOnWindowFocus: true,
