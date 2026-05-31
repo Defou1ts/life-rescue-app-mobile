@@ -1,33 +1,29 @@
 import { useMutation } from "@tanstack/react-query";
-import { router } from "expo-router";
 import Toast from "react-native-toast-message";
 import { axiosInstance } from "../axiosInstance";
-import { logout } from "../logout";
 
-export type UpdateEmailData = {
-  newEmail: string;
+export type ResetPasswordData = {
+  email: string;
   token: string;
+  newPassword: string;
+  confirmPassword: string;
 };
 
-export const useUpdateEmail = () => {
+export const useResetPassword = () => {
   return useMutation({
-    mutationFn: async (data: UpdateEmailData) => {
-      return (await axiosInstance.put("/profile/email", data)).data;
+    mutationFn: async (data: ResetPasswordData) => {
+      return (await axiosInstance.post("/profile/password", data)).data;
     },
     onSuccess() {
       Toast.show({
         type: "success",
-        text1: "Email updated successfully",
+        text1: "Password reset successfully",
       });
-
-      logout();
-
-      router.replace("/signIn");
     },
     onError() {
       Toast.show({
         type: "error",
-        text1: "Failed to update email",
+        text1: "Failed to reset password",
         text2: "Check the verification code and try again",
       });
     },

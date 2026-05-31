@@ -5,7 +5,7 @@ import { Input } from "@/components/input";
 import { Loading } from "@/components/loading";
 import { Title } from "@/components/Title";
 import { UnderlinedButton } from "@/components/underlined-text";
-import React from "react";
+import { useRouter } from "expo-router";
 import { Controller, useForm } from "react-hook-form";
 import { StyleSheet, Text, View } from "react-native";
 
@@ -15,6 +15,7 @@ type SignInFormData = {
 };
 
 export default function SignIn() {
+  const router = useRouter();
   const { mutate, isPending, isSuccess, isError } = useSignIn();
 
   const {
@@ -89,7 +90,11 @@ export default function SignIn() {
         </View>
         {isPending && <Loading />}
         {isError && <ErrorLoading>Invalid email or password</ErrorLoading>}
-        <UnderlinedButton fontWeight="regular" style={{ marginTop: 20 }}>
+        <UnderlinedButton
+          fontWeight="regular"
+          style={{ marginTop: 20 }}
+          onPress={() => router.push("/resetPassword")}
+        >
           Forgot Password?
         </UnderlinedButton>
       </View>

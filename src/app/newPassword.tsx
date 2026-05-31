@@ -1,103 +1,183 @@
+import { useResetPassword } from "@/api/hooks/useResetPassword";
+import { AppText } from "@/components/app-text";
 import { AppButton } from "@/components/button";
 import { Input } from "@/components/input";
 import { Title } from "@/components/Title";
 import { UnderlinedButton } from "@/components/underlined-text";
-import { useNavigation } from "expo-router";
-
-import React from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { Controller, useForm } from "react-hook-form";
 import { StyleSheet, Text, View } from "react-native";
 
-type NewPsswordFormData = {
+type FormValues = {
+  token: string;
   newPassword: string;
   confirmPassword: string;
 };
 
 export default function NewPassword() {
-  const navigation = useNavigation();
-  const email = "email@mail.ru";
+  const router = useRouter();
+  const { email } = useLocalSearchParams<{ email: string }>();
+  const { mutate: resetPassword, isPending } = useResetPassword();
+
   const {
     control,
-    handleSubmit,
+    getValues,
+    setError,
+    clearErrors,
     formState: { errors },
-  } = useForm<NewPsswordFormData>({
+  } = useForm<FormValues>({
     defaultValues: {
+      token: "",
       newPassword: "",
       confirmPassword: "",
     },
   });
 
-  const onSubmit = (data: NewPsswordFormData) => {
-    console.log(data);
+  const onSubmit = () => {
+    clearErrors();
+
+    if (!email) {
+      router.replace("/resetPassword");
+      return;
+    }
+
+    const token = getValues("token").trim();
+    const newPassword = getValues("newPassword");
+    const confirmPassword = getValues("confirmPassword");
+
+    if (!token) {
+      setError("token", { message: "Verification code is required" });
+      return;
+    }
+
+    if (!newPassword) {
+      setError("newPassword", { message: "New password is required" });
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      setError("newPassword", { message: "Minimum 6 characters" });
+      return;
+    }
+
+    if (!confirmPassword) {
+      setError("confirmPassword", { message: "Confirm password is required" });
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setError("confirmPassword", { message: "Passwords must match" });
+      return;
+    }
+
+    resetPassword(
+      {
+        email: String(email),
+        token,
+        newPassword,
+        confirmPassword,
+      },
+      {
+        onSuccess: () => {
+          router.replace("/signIn");
+        },
+      },
+    );
   };
 
   return (
     <View style={styles.container}>
-      <View style={{ marginBottom: 70 }}>
+      <View style={styles.titleWrapper}>
         <Title>New Password</Title>
       </View>
+
+      {!!email && (
+        <View style={styles.descriptionWrapper}>
+          <AppText>
+            Enter the verification code sent to {email} and your new password
+          </AppText>
+        </View>
+      )}
 
       <View style={styles.inputsContainer}>
         <View>
           <Controller
             control={control}
-            name="newPassword"
-            rules={{
-              required: "New Password is required",
-            }}
-            render={({ field: { onChange, value } }) => (
+            name="token"
+            render={({ field: { onChange, onBlur, value } }) => (
               <Input
-                placeholder="New Password"
-                value={value}
+                placeholder="Verification Code"
+                value={value ?? ""}
                 onChangeText={onChange}
+                onBlur={onBlur}
                 autoCapitalize="none"
-                keyboardType="email-address"
+                autoCorrect={false}
+                autoComplete="one-time-code"
+                textContentType="oneTimeCode"
               />
             )}
           />
+          {errors.token && (
+            <Text style={styles.errorText}>{errors.token.message}</Text>
+          )}
+        </View>
 
+        <View>
+          <Controller
+            control={control}
+            name="newPassword"
+            render={({ field: { onChange, onBlur, value } }) => (
+              <Input
+                placeholder="New Password"
+                secure
+                value={value ?? ""}
+                onChangeText={onChange}
+                onBlur={onBlur}
+                autoCapitalize="none"
+              />
+            )}
+          />
           {errors.newPassword && (
             <Text style={styles.errorText}>{errors.newPassword.message}</Text>
           )}
         </View>
+
         <View>
           <Controller
             control={control}
             name="confirmPassword"
-            rules={{
-              required: "Confirm password is required",
-            }}
-            render={({ field: { onChange, value } }) => (
+            render={({ field: { onChange, onBlur, value } }) => (
               <Input
                 placeholder="Confirm Password"
-                value={value}
+                secure
+                value={value ?? ""}
                 onChangeText={onChange}
+                onBlur={onBlur}
                 autoCapitalize="none"
-                keyboardType="email-address"
               />
             )}
           />
-
-          {errors.newPassword && (
-            <Text style={styles.errorText}>{errors.newPassword.message}</Text>
+          {errors.confirmPassword && (
+            <Text style={styles.errorText}>
+              {errors.confirmPassword.message}
+            </Text>
           )}
         </View>
       </View>
 
       <AppButton
-        containerStyle={{ marginTop: 27 }}
+        containerStyle={styles.submitButton}
         type="primary"
-        onPress={handleSubmit(onSubmit)}
+        onPress={onSubmit}
+        disabled={isPending}
       >
-        Update Password
+        {isPending ? "Updating..." : "Update Password"}
       </AppButton>
 
       <UnderlinedButton
-        onPress={() => {
-          navigation.goBack();
-        }}
+        onPress={() => router.replace("/signIn")}
         fontWeight="bold"
-        style={{ marginTop: 20 }}
+        style={styles.backButton}
       >
         Back to Log In
       </UnderlinedButton>
@@ -111,12 +191,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 42,
     justifyContent: "center",
   },
-
+  titleWrapper: {
+    marginBottom: 13,
+  },
+  descriptionWrapper: {
+    marginBottom: 70,
+  },
   inputsContainer: {
     gap: 36,
     marginBottom: 70,
   },
-
+  submitButton: {
+    marginTop: 27,
+  },
+  backButton: {
+    marginTop: 20,
+  },
   errorText: {
     color: "#dc2626",
     fontSize: 13,
