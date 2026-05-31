@@ -3,10 +3,11 @@ import { useDiseases } from "@/api/hooks/useDiseases";
 import { useProfile } from "@/api/hooks/useProfile";
 import { IconButton } from "@/components/icon-button";
 import { Input } from "@/components/input";
-import BottomSheet, { BottomSheetView } from "@expo/ui/community/bottom-sheet";
+import BottomSheet, { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { Image } from "expo-image";
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 const Logo = require("@/assets/images/logo.png");
 const MoreInfoIcon = require("@/assets/images/more-info.png");
@@ -17,6 +18,8 @@ export default function PRofile() {
   const { data: allergiesData, isLoading: isLoadingAllergies } = useAllergies();
   const { data: diseasesData, isLoading: isLoadingDiseases } = useDiseases();
   const sheetRef = useRef<BottomSheet>(null);
+  const snapPoints = useMemo(() => ["50%", "90%"], []);
+
   if (
     isLoading ||
     !data ||
@@ -32,89 +35,90 @@ export default function PRofile() {
     );
   }
 
+  const allergyItems =
+    allergiesData.length === 0
+      ? [{ id: "default", name: "No allergies" }]
+      : allergiesData;
+
+  const diseaseItems =
+    diseasesData.length === 0
+      ? [{ id: "default", name: "No diseases" }]
+      : diseasesData;
+
   return (
-    <View style={styles.container}>
-      <View style={styles.imageContainer}>
-        <Image source={Logo} style={styles.image} />
-      </View>
-      <View style={styles.dataContainer}>
-        {data.name && data.lastName && (
-          <Input value={data.name + " " + data.lastName} />
-        )}
-        {data.email && <Input value={data.email} />}
-        {data.phoneNumber && <Input value={data.phoneNumber} />}
-        {data.isTwoFactorEnabled && (
-          <Text style={styles.text}>2FA Enabled</Text>
-        )}
-        <IconButton
-          imageUrl={MoreInfoIcon}
-          onPress={() => sheetRef.current?.expand()}
+    <GestureHandlerRootView style={styles.root}>
+      <View style={styles.container}>
+        <View style={styles.imageContainer}>
+          <Image source={Logo} style={styles.image} />
+        </View>
+        <View style={styles.dataContainer}>
+          {data.name && data.lastName && (
+            <Input value={data.name + " " + data.lastName} />
+          )}
+          {data.email && <Input value={data.email} />}
+          {data.phoneNumber && <Input value={data.phoneNumber} />}
+          {data.isTwoFactorEnabled && (
+            <Text style={styles.text}>2FA Enabled</Text>
+          )}
+          <IconButton
+            imageUrl={MoreInfoIcon}
+            onPress={() => sheetRef.current?.expand()}
+          >
+            More information
+          </IconButton>
+        </View>
+
+        <BottomSheet
+          ref={sheetRef}
+          index={-1}
+          snapPoints={snapPoints}
+          enablePanDownToClose
+          backgroundStyle={styles.sheetBackground}
+          handleIndicatorStyle={styles.sheetHandle}
         >
-          More information
-        </IconButton>
+          <BottomSheetScrollView
+            contentContainerStyle={styles.sheetContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={styles.infoWrapper}>
+              <View style={styles.infoHeader}>
+                <Text style={styles.infoHeaderText}>Allergy</Text>
+                <Text style={styles.infoHeaderText}>&mdash;</Text>
+              </View>
+              <View style={styles.listContainer}>
+                {allergyItems.map((allergy) => (
+                  <View style={styles.infoContent} key={allergy.id}>
+                    <Text style={styles.infoText}>{allergy.name}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.infoWrapper}>
+              <View style={styles.infoHeader}>
+                <Text style={styles.infoHeaderText}>Disease</Text>
+                <Text style={styles.infoHeaderText}>&mdash;</Text>
+              </View>
+              <View style={styles.listContainer}>
+                {diseaseItems.map((disease) => (
+                  <View style={styles.infoContent} key={disease.id}>
+                    <Text style={styles.infoText}>{disease.name}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          </BottomSheetScrollView>
+        </BottomSheet>
       </View>
-      <BottomSheet
-        ref={sheetRef}
-        snapPoints={["50%", "100%"]}
-        index={-1}
-        onChange={(index) => {
-          console.log("onChange", index);
-        }}
-        onClose={() => {
-          console.log("closed");
-        }}
-        enablePanDownToClose
-      >
-        <BottomSheetView style={{ flex: 1, padding: 28 }}>
-          <View style={styles.infoWrapper}>
-            <View style={styles.infoHeader}>
-              <Text style={styles.infoHeaderText}>Allergy</Text>
-              <Text style={styles.infoHeaderText}>&mdash;</Text>
-            </View>
-            <View style={styles.infoContent}>
-              {[
-                allergiesData.length === 0
-                  ? { id: "default", name: "No allergies" }
-                  : null,
-                ...allergiesData,
-              ]?.map((allergy) => {
-                if (!allergy) return null;
-                return (
-                  <Text style={styles.infoText} key={allergy.id}>
-                    {allergy.name}
-                  </Text>
-                );
-              })}
-            </View>
-          </View>
-          <View style={styles.infoWrapper}>
-            <View style={styles.infoHeader}>
-              <Text style={styles.infoHeaderText}>Disease</Text>
-              <Text style={styles.infoHeaderText}>&mdash;</Text>
-            </View>
-            <View style={styles.infoContent}>
-              {[
-                diseasesData.length === 0
-                  ? { id: "default", name: "No diseases" }
-                  : null,
-                ...diseasesData,
-              ]?.map((disease) => {
-                if (!disease) return null;
-                return (
-                  <Text style={styles.infoText} key={disease.id}>
-                    {disease.name}
-                  </Text>
-                );
-              })}
-            </View>
-          </View>
-        </BottomSheetView>
-      </BottomSheet>
-    </View>
+    </GestureHandlerRootView>
   );
 }
 
 const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
   container: {
     flex: 1,
     alignItems: "center",
@@ -135,6 +139,19 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 50,
   },
+  sheetBackground: {
+    backgroundColor: "#EBF1F5",
+    borderTopLeftRadius: 40,
+    borderTopRightRadius: 40,
+  },
+  sheetHandle: {
+    backgroundColor: "#CBD5E1",
+    width: 80,
+  },
+  sheetContent: {
+    padding: 28,
+    paddingBottom: 48,
+  },
   infoWrapper: {
     marginBottom: 30,
     borderRadius: 45,
@@ -147,14 +164,16 @@ const styles = StyleSheet.create({
     },
     shadowOpacity: 0.25,
     shadowRadius: 10,
-
     elevation: 10,
   },
   infoHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    color: "#0D9488",
+    marginBottom: 25,
+  },
+  listContainer: {
+    gap: 10,
   },
   infoHeaderText: {
     fontSize: 25,
@@ -165,7 +184,9 @@ const styles = StyleSheet.create({
   infoContent: {
     paddingVertical: 18,
     paddingHorizontal: 12,
-
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     backgroundColor: "#EBF1F5",
     shadowColor: "#000",
     shadowOffset: {
@@ -174,7 +195,6 @@ const styles = StyleSheet.create({
     },
     shadowOpacity: 0.25,
     shadowRadius: 10,
-
     elevation: 10,
     borderRadius: 25,
   },
@@ -182,6 +202,6 @@ const styles = StyleSheet.create({
     fontSize: 25,
     fontFamily: "Inter",
     color: "#0D9488",
-    fontWeight: "light",
+    fontWeight: "300",
   },
 });
