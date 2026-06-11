@@ -1,3 +1,5 @@
+import { useHasSubscription } from "@/api/hooks/useHasSubcription";
+import { ProfileResponse } from "@/api/hooks/useProfile";
 import { useProfile } from "@/api/hooks/useProfile";
 import { useUpdateProfile } from "@/api/hooks/useUpdateProfile";
 import { AppText } from "@/components/app-text";
@@ -6,7 +8,7 @@ import { Input } from "@/components/input";
 import { Host, Switch } from "@expo/ui/jetpack-compose";
 import { yupResolver } from "@hookform/resolvers/yup";
 import { useRouter } from "expo-router";
-import { useEffect } from "react";
+import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import * as yup from "yup";
@@ -23,41 +25,51 @@ const schema = yup.object({
     })
     .required("Full name is required"),
 
-  phoneNumber: yup.string().required("Phone number is required"),
-
   isTwoFactorEnabled: yup.boolean().required(),
 });
 
 type FormValues = yup.InferType<typeof schema>;
-export default function EditProfile() {
-  const { data, isLoading, isError } = useProfile();
 
+function getDefaultValues(data: ProfileResponse): FormValues {
+  return {
+    fullName: `${data.name} ${data.lastName}`.trim(),
+    isTwoFactorEnabled: data.isTwoFactorEnabled ?? false,
+  };
+}
+
+function EditProfileForm({
+  data,
+  hasSubscription,
+}: {
+  data: ProfileResponse;
+  hasSubscription: boolean;
+}) {
   const { mutate, isPending } = useUpdateProfile();
   const router = useRouter();
+  const [phoneNumber, setPhoneNumber] = useState(() =>
+    data.phoneNumber != null ? String(data.phoneNumber) : "",
+  );
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+
   const {
     control,
     handleSubmit,
     formState: { errors },
-    reset,
   } = useForm<FormValues>({
     resolver: yupResolver(schema),
-    defaultValues: {
-      fullName: "",
-      phoneNumber: "",
-      isTwoFactorEnabled: false,
-    },
+    defaultValues: getDefaultValues(data),
   });
 
-  useEffect(() => {
-    console.log(data);
-    reset({
-      fullName: data ? `${data.name} ${data.lastName}` : "",
-      phoneNumber: data?.phoneNumber ?? "",
-      isTwoFactorEnabled: data?.isTwoFactorEnabled ?? false,
-    });
-  }, [data]);
-
   const onSubmit = (values: FormValues) => {
+    const trimmedPhone = phoneNumber.trim();
+
+    if (!trimmedPhone) {
+      setPhoneError("Phone number is required");
+      return;
+    }
+
+    setPhoneError(null);
+
     const [firstName, ...rest] = values.fullName.trim().split(" ");
 
     const lastName = rest.join(" ");
@@ -65,26 +77,10 @@ export default function EditProfile() {
     mutate({
       firstName,
       lastName,
-      phoneNumber: values.phoneNumber,
+      phoneNumber: trimmedPhone,
       isTwoFactorEnabled: values.isTwoFactorEnabled,
     });
   };
-
-  if (isLoading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
-  }
-
-  if (isError || !data) {
-    return (
-      <View style={styles.center}>
-        <Text>Error loading data</Text>
-      </View>
-    );
-  }
 
   return (
     <View style={styles.container}>
@@ -101,10 +97,11 @@ export default function EditProfile() {
           <Controller
             control={control}
             name="fullName"
-            render={({ field: { onChange, value } }) => (
+            render={({ field: { onChange, onBlur, value } }) => (
               <Input
-                value={String(value ?? "")}
+                value={value ?? ""}
                 onChangeText={onChange}
+                onBlur={onBlur}
                 placeholder="Enter First Name and Last Name"
               />
             )}
@@ -115,21 +112,19 @@ export default function EditProfile() {
           )}
 
           <View>
-            <Controller
-              control={control}
-              name="phoneNumber"
-              render={({ field: { onChange, value } }) => (
-                <Input
-                  value={String(value ?? "")}
-                  onChangeText={onChange}
-                  placeholder="Enter Phone Number"
-                />
-              )}
+            <Input
+              value={phoneNumber}
+              onChangeText={(text) => {
+                setPhoneNumber(text);
+                if (phoneError) setPhoneError(null);
+              }}
+              placeholder="Enter Phone Number"
+              autoCorrect={false}
+              autoComplete="off"
+              importantForAutofill="no"
             />
 
-            {errors.phoneNumber && (
-              <Text style={styles.error}>{errors.phoneNumber.message}</Text>
-            )}
+            {phoneError && <Text style={styles.error}>{phoneError}</Text>}
           </View>
         </View>
 
@@ -157,21 +152,25 @@ export default function EditProfile() {
           )}
         />
 
-        <AppButton
-          onPress={() => router.push("/settings/editAllergy")}
-          containerStyle={styles.button}
-          type="primary"
-        >
-          Edit Allergy
-        </AppButton>
+        {hasSubscription && (
+          <>
+            <AppButton
+              onPress={() => router.push("/settings/editAllergy")}
+              containerStyle={styles.button}
+              type="primary"
+            >
+              Edit Allergy
+            </AppButton>
 
-        <AppButton
-          onPress={() => router.push("/settings/editDisease")}
-          containerStyle={styles.button}
-          type="primary"
-        >
-          Edit Disease
-        </AppButton>
+            <AppButton
+              onPress={() => router.push("/settings/editDisease")}
+              containerStyle={styles.button}
+              type="primary"
+            >
+              Edit Disease
+            </AppButton>
+          </>
+        )}
 
         <AppButton
           onPress={() => router.push("/settings/sendKYC")}
@@ -191,6 +190,34 @@ export default function EditProfile() {
         </AppButton>
       </View>
     </View>
+  );
+}
+
+export default function EditProfile() {
+  const { data, isPending, isError } = useProfile();
+  const { data: subscriptionData } = useHasSubscription();
+
+  if (isPending) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" />
+      </View>
+    );
+  }
+
+  if (isError || !data) {
+    return (
+      <View style={styles.center}>
+        <Text>Error loading data</Text>
+      </View>
+    );
+  }
+
+  return (
+    <EditProfileForm
+      data={data}
+      hasSubscription={subscriptionData?.hasActiveSubscription === true}
+    />
   );
 }
 

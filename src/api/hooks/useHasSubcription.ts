@@ -7,8 +7,12 @@ export type HasSubscriptionResponse = {
 };
 
 export const hasSubscription = async (): Promise<HasSubscriptionResponse> => {
-  const res = await axiosInstance.get(`/profile/subscription`);
-  return res.data;
+  try {
+    const res = await axiosInstance.get(`/profile/subscription`);
+    return res.data;
+  } catch {
+    return { hasActiveSubscription: false };
+  }
 };
 
 export const useHasSubscription = () => {
@@ -16,5 +20,6 @@ export const useHasSubscription = () => {
     queryKey: ["hasSubscription"],
     queryFn: hasSubscription,
     refetchOnMount: "always",
+    staleTime: 30_000,
   });
 };

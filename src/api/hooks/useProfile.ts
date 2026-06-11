@@ -19,6 +19,6 @@ export const useProfile = () => {
   return useQuery<ProfileResponse>({
     queryKey: ["profile"],
     queryFn: getProfile,
-    refetchOnWindowFocus: true,
+    retry: 1,
   });
 };

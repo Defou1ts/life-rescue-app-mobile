@@ -1,5 +1,6 @@
 import { useAllergies } from "@/api/hooks/useAllergies";
 import { useDiseases } from "@/api/hooks/useDiseases";
+import { useHasSubscription } from "@/api/hooks/useHasSubcription";
 import { useProfile } from "@/api/hooks/useProfile";
 import { IconButton } from "@/components/icon-button";
 import { Input } from "@/components/input";
@@ -13,37 +14,47 @@ const Logo = require("@/assets/images/logo.png");
 const MoreInfoIcon = require("@/assets/images/more-info.png");
 
 export default function PRofile() {
-  const { data, isLoading } = useProfile();
+  const { data, isPending, isError } = useProfile();
+  const { data: subscriptionData } = useHasSubscription();
 
-  const { data: allergiesData, isLoading: isLoadingAllergies } = useAllergies();
-  const { data: diseasesData, isLoading: isLoadingDiseases } = useDiseases();
+  const hasSubscription = subscriptionData?.hasActiveSubscription === true;
+
+  const { data: allergiesData, isFetching: isFetchingAllergies } = useAllergies({
+    enabled: hasSubscription,
+  });
+  const { data: diseasesData, isFetching: isFetchingDiseases } = useDiseases({
+    enabled: hasSubscription,
+  });
   const sheetRef = useRef<BottomSheet>(null);
   const snapPoints = useMemo(() => ["50%", "90%"], []);
 
-  if (
-    isLoading ||
-    !data ||
-    isLoadingAllergies ||
-    isLoadingDiseases ||
-    !allergiesData ||
-    !diseasesData
-  ) {
+  if (isPending) {
     return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+      <View style={styles.center}>
         <ActivityIndicator size="large" />
       </View>
     );
   }
 
+  if (isError || !data) {
+    return (
+      <View style={styles.center}>
+        <Text>Error loading profile</Text>
+      </View>
+    );
+  }
+
   const allergyItems =
-    allergiesData.length === 0
+    allergiesData && allergiesData.length === 0
       ? [{ id: "default", name: "No allergies" }]
-      : allergiesData;
+      : (allergiesData ?? []);
 
   const diseaseItems =
-    diseasesData.length === 0
+    diseasesData && diseasesData.length === 0
       ? [{ id: "default", name: "No diseases" }]
-      : diseasesData;
+      : (diseasesData ?? []);
+
+  const isDetailsLoading = isFetchingAllergies || isFetchingDiseases;
 
   return (
     <GestureHandlerRootView style={styles.root}>
@@ -60,56 +71,68 @@ export default function PRofile() {
           {data.isTwoFactorEnabled && (
             <Text style={styles.text}>2FA Enabled</Text>
           )}
-          <IconButton
-            imageUrl={MoreInfoIcon}
-            onPress={() => sheetRef.current?.expand()}
-          >
-            More information
-          </IconButton>
+          {hasSubscription && (
+            <IconButton
+              imageUrl={MoreInfoIcon}
+              onPress={() => sheetRef.current?.expand()}
+            >
+              More information
+            </IconButton>
+          )}
         </View>
 
-        <BottomSheet
-          ref={sheetRef}
-          index={-1}
-          snapPoints={snapPoints}
-          enablePanDownToClose
-          backgroundStyle={styles.sheetBackground}
-          handleIndicatorStyle={styles.sheetHandle}
-        >
-          <BottomSheetScrollView
-            contentContainerStyle={styles.sheetContent}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
+        {hasSubscription && (
+          <BottomSheet
+            ref={sheetRef}
+            index={-1}
+            snapPoints={snapPoints}
+            enablePanDownToClose
+            backgroundStyle={styles.sheetBackground}
+            handleIndicatorStyle={styles.sheetHandle}
           >
-            <View style={styles.infoWrapper}>
-              <View style={styles.infoHeader}>
-                <Text style={styles.infoHeaderText}>Allergy</Text>
-                <Text style={styles.infoHeaderText}>&mdash;</Text>
-              </View>
-              <View style={styles.listContainer}>
-                {allergyItems.map((allergy) => (
-                  <View style={styles.infoContent} key={allergy.id}>
-                    <Text style={styles.infoText}>{allergy.name}</Text>
+            <BottomSheetScrollView
+              contentContainerStyle={styles.sheetContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              {isDetailsLoading ? (
+                <View style={styles.sheetLoading}>
+                  <ActivityIndicator size="large" color="#0D9488" />
+                </View>
+              ) : (
+                <>
+                  <View style={styles.infoWrapper}>
+                    <View style={styles.infoHeader}>
+                      <Text style={styles.infoHeaderText}>Allergy</Text>
+                      <Text style={styles.infoHeaderText}>&mdash;</Text>
+                    </View>
+                    <View style={styles.listContainer}>
+                      {allergyItems.map((allergy) => (
+                        <View style={styles.infoContent} key={allergy.id}>
+                          <Text style={styles.infoText}>{allergy.name}</Text>
+                        </View>
+                      ))}
+                    </View>
                   </View>
-                ))}
-              </View>
-            </View>
 
-            <View style={styles.infoWrapper}>
-              <View style={styles.infoHeader}>
-                <Text style={styles.infoHeaderText}>Disease</Text>
-                <Text style={styles.infoHeaderText}>&mdash;</Text>
-              </View>
-              <View style={styles.listContainer}>
-                {diseaseItems.map((disease) => (
-                  <View style={styles.infoContent} key={disease.id}>
-                    <Text style={styles.infoText}>{disease.name}</Text>
+                  <View style={styles.infoWrapper}>
+                    <View style={styles.infoHeader}>
+                      <Text style={styles.infoHeaderText}>Disease</Text>
+                      <Text style={styles.infoHeaderText}>&mdash;</Text>
+                    </View>
+                    <View style={styles.listContainer}>
+                      {diseaseItems.map((disease) => (
+                        <View style={styles.infoContent} key={disease.id}>
+                          <Text style={styles.infoText}>{disease.name}</Text>
+                        </View>
+                      ))}
+                    </View>
                   </View>
-                ))}
-              </View>
-            </View>
-          </BottomSheetScrollView>
-        </BottomSheet>
+                </>
+              )}
+            </BottomSheetScrollView>
+          </BottomSheet>
+        )}
       </View>
     </GestureHandlerRootView>
   );
@@ -123,6 +146,11 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
+  },
+  center: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
   },
   imageContainer: {},
   image: {
@@ -151,6 +179,10 @@ const styles = StyleSheet.create({
   sheetContent: {
     padding: 28,
     paddingBottom: 48,
+  },
+  sheetLoading: {
+    paddingVertical: 48,
+    alignItems: "center",
   },
   infoWrapper: {
     marginBottom: 30,

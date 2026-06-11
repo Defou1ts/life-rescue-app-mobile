@@ -8,12 +8,13 @@ export type Allergy = {
 
 export type AllergiesResponse = Array<Allergy>;
 
-export const useAllergies = () => {
+export const useAllergies = (options?: { enabled?: boolean }) => {
   return useQuery({
     queryKey: ["allergies"],
     queryFn: async () => {
       const res = await axiosInstance.get("/allergy/account");
       return res.data as AllergiesResponse;
     },
+    enabled: options?.enabled ?? true,
   });
-}
+};

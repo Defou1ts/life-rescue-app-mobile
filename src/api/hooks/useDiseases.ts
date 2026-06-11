@@ -9,12 +9,13 @@ export type Disease = {
 export type DiseasesResponse = Array<Disease>;
 
 
-export const useDiseases = () => {
+export const useDiseases = (options?: { enabled?: boolean }) => {
   return useQuery({
     queryKey: ["diseases"],
     queryFn: async () => {
       const res = await axiosInstance.get("/disease/account");
       return res.data as DiseasesResponse;
     },
+    enabled: options?.enabled ?? true,
   });
 };
