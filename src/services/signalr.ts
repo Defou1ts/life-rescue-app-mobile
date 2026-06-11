@@ -39,7 +39,7 @@ class SignalRService {
     }
 
     this.connection = new HubConnectionBuilder()
-      .withUrl("http://10.0.2.2:5032/clientHub", {
+      .withUrl("http://87.232.65.208:5032/clientHub", {
         accessTokenFactory: async () => {
           const token = await tokenStorage.getAccessToken();
 

@@ -3,7 +3,7 @@ import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 import { router } from "expo-router";
 
 export const axiosInstance = axios.create({
-  baseURL: "http://10.0.2.2:5032/api/v1",
+  baseURL: "http://87.232.65.208:5032/api/v1",
 });
 
 type FailedRequest = {
@@ -70,7 +70,7 @@ axiosInstance.interceptors.response.use(
         }
 
         const response = await axios.post(
-          "http://10.0.2.2:5032/api/v1/auth/refresh",
+          "http://87.232.65.208:5032/api/v1/auth/refresh",
           {
             refreshToken,
           },
