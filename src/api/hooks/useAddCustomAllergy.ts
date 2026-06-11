@@ -13,7 +13,10 @@ export const useAddCustomAllergy = () => {
       });
       return res.data as Allergy;
     },
-    onSuccess(data, variables, onMutateResult, context) {
+    onSuccess(data, variables) {
+      queryClient.setQueryData<Allergy[]>(["allergies"], (prev) =>
+        prev ? [...prev, data] : [data],
+      );
       queryClient.invalidateQueries({
         queryKey: ["allergies"],
       });

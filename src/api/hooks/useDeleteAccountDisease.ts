@@ -2,6 +2,7 @@ import { queryClient } from "@/config/queryClient";
 import { useMutation } from "@tanstack/react-query";
 import Toast from "react-native-toast-message";
 import { axiosInstance } from "../axiosInstance";
+import { DiseasesResponse } from "./useDiseases";
 
 export const useDeleteAccountDisease = () => {
   return useMutation({
@@ -9,7 +10,10 @@ export const useDeleteAccountDisease = () => {
     mutationFn: async (diseaseId: string) => {
       await axiosInstance.delete(`/disease/account/${diseaseId}`);
     },
-    onSuccess() {
+    onSuccess(_data, diseaseId) {
+      queryClient.setQueryData<DiseasesResponse>(["diseases"], (prev) =>
+        prev ? prev.filter((disease) => disease.id !== diseaseId) : prev,
+      );
       queryClient.invalidateQueries({
         queryKey: ["diseases"],
       });

@@ -6,7 +6,8 @@ import { IconButton } from "@/components/icon-button";
 import { Input } from "@/components/input";
 import BottomSheet, { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { Image } from "expo-image";
-import { useMemo, useRef } from "react";
+import { useFocusEffect } from "expo-router";
+import { useCallback, useMemo, useRef } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
@@ -19,14 +20,34 @@ export default function PRofile() {
 
   const hasSubscription = subscriptionData?.hasActiveSubscription === true;
 
-  const { data: allergiesData, isFetching: isFetchingAllergies } = useAllergies({
+  const {
+    data: allergiesData,
+    isFetching: isFetchingAllergies,
+    refetch: refetchAllergies,
+  } = useAllergies({
     enabled: hasSubscription,
   });
-  const { data: diseasesData, isFetching: isFetchingDiseases } = useDiseases({
+  const {
+    data: diseasesData,
+    isFetching: isFetchingDiseases,
+    refetch: refetchDiseases,
+  } = useDiseases({
     enabled: hasSubscription,
   });
   const sheetRef = useRef<BottomSheet>(null);
   const snapPoints = useMemo(() => ["50%", "90%"], []);
+
+  const refreshHealthDetails = useCallback(() => {
+    if (!hasSubscription) return;
+    void refetchAllergies();
+    void refetchDiseases();
+  }, [hasSubscription, refetchAllergies, refetchDiseases]);
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshHealthDetails();
+    }, [refreshHealthDetails]),
+  );
 
   if (isPending) {
     return (
@@ -72,12 +93,21 @@ export default function PRofile() {
             <Text style={styles.text}>2FA Enabled</Text>
           )}
           {hasSubscription && (
-            <IconButton
-              imageUrl={MoreInfoIcon}
-              onPress={() => sheetRef.current?.expand()}
+            <View
+              style={
+                !data.isTwoFactorEnabled ? styles.moreInfoSpacing : undefined
+              }
             >
-              More information
-            </IconButton>
+              <IconButton
+                imageUrl={MoreInfoIcon}
+                onPress={() => {
+                  refreshHealthDetails();
+                  sheetRef.current?.expand();
+                }}
+              >
+                More information
+              </IconButton>
+            </View>
           )}
         </View>
 
@@ -166,6 +196,9 @@ const styles = StyleSheet.create({
     color: "#0D9488",
     textAlign: "center",
     marginBottom: 50,
+  },
+  moreInfoSpacing: {
+    marginTop: 20,
   },
   sheetBackground: {
     backgroundColor: "#EBF1F5",
