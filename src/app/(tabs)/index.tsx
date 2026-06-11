@@ -15,6 +15,7 @@ import { LoadingScreen } from "@/components/loading-screen";
 import { Title } from "@/components/Title";
 import { useUserLocation } from "@/hooks/useUserLocation";
 import { signalRService } from "@/services/signalr";
+import type { Coordinates } from "@/types/emergency";
 import { extractEmergencySelections } from "@/utils/emergency";
 import BottomSheet, { BottomSheetView } from "@expo/ui/community/bottom-sheet";
 import { router } from "expo-router";
@@ -59,17 +60,49 @@ export default function Home() {
     null,
   );
 
+  const roundedUserLat = userLocation
+    ? Math.round(userLocation.latitude * 1000) / 1000
+    : null;
+  const roundedUserLng = userLocation
+    ? Math.round(userLocation.longitude * 1000) / 1000
+    : null;
+
   useEffect(() => {
-    if (userLocation) {
-      fetchParamedics({
-        latitude: userLocation?.latitude,
-        longitude: userLocation?.longitude,
-      });
+    if (roundedUserLat == null || roundedUserLng == null) {
+      return;
     }
-  }, [userLocation]);
+
+    fetchParamedics({
+      latitude: roundedUserLat,
+      longitude: roundedUserLng,
+    });
+  }, [roundedUserLat, roundedUserLng]);
 
   const { mutateAsync: rateEmergency, isPending: isRatingLoading } =
     useRateEmergency();
+
+  const { data: rootEmergencyQuestion } = useGetRootEmergencyQuestion();
+  const sheetRef = useRef<BottomSheet>(null);
+  const {
+    data: activeEmergencyRequest,
+    isPending: isLoadingActiveEmergencyRequest,
+  } = useGetActiveEmergencyRequest();
+
+  const [selectedAnswerId, setSelectedAnswerId] = useState<string | null>(null);
+
+  const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
+
+  const [symptomSelections, setSymptomSelections] = useState<{
+    questionIds: string[];
+    answerIds: string[];
+  }>({ questionIds: [], answerIds: [] });
+
+  const latestSymptomSelectionsRef = useRef(symptomSelections);
+  const latestUserLocationRef = useRef(userLocation);
+  const activeEmergencyIdRef = useRef<string | null>(null);
+
+  const [paramedicLocationOverride, setParamedicLocationOverride] =
+    useState<Coordinates | null>(null);
 
   useEffect(() => {
     signalRService.onReceiveFinishedEmergency = (message) => {
@@ -91,30 +124,24 @@ export default function Home() {
       setRatingModalVisible(true);
     };
 
+    signalRService.onReceiveParamedicLocation = (payload) => {
+      if (payload.emergencyId !== activeEmergencyIdRef.current) {
+        return;
+      }
+
+      setParamedicLocationOverride(payload.paramedicLocation);
+    };
+
+    void signalRService
+      .startConnection()
+      .catch((err) => console.error("SignalR connect failed:", err));
+
     return () => {
       signalRService.onReceiveFinishedEmergency = null;
+      signalRService.onReceiveParamedicLocation = null;
+      void signalRService.stopConnection();
     };
   }, []);
-
-  const { data: rootEmergencyQuestion } = useGetRootEmergencyQuestion();
-  const sheetRef = useRef<BottomSheet>(null);
-  const {
-    data: activeEmergencyRequest,
-    isPending: isLoadingActiveEmergencyRequest,
-  } = useGetActiveEmergencyRequest();
-
-
-  const [selectedAnswerId, setSelectedAnswerId] = useState<string | null>(null);
-
-  const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
-
-  const [symptomSelections, setSymptomSelections] = useState<{
-    questionIds: string[];
-    answerIds: string[];
-  }>({ questionIds: [], answerIds: [] });
-
-  const latestSymptomSelectionsRef = useRef(symptomSelections);
-  const latestUserLocationRef = useRef(userLocation);
 
   const [history, setHistory] = useState<
     {
@@ -130,6 +157,19 @@ export default function Home() {
   useEffect(() => {
     latestUserLocationRef.current = userLocation;
   }, [userLocation]);
+
+  useEffect(() => {
+    activeEmergencyIdRef.current = activeEmergencyRequest?.id ?? null;
+  }, [activeEmergencyRequest?.id]);
+
+  useEffect(() => {
+    setParamedicLocationOverride(null);
+  }, [activeEmergencyRequest?.id]);
+
+  const paramedicLocation: Coordinates | null =
+    paramedicLocationOverride ??
+    activeEmergencyRequest?.currentParamedicLocation ??
+    null;
 
   useEffect(() => {
     if (!activeEmergencyRequest) {
@@ -248,23 +288,26 @@ export default function Home() {
     <View style={styles.container}>
       {/* MAP */}
       <View style={styles.mapContainer}>
-        <View>
-          <View style={styles.medicsContainer}>
-            <View style={styles.medics} />
+        <View style={styles.medicsContainer}>
+          <View style={styles.medics} />
 
-            <AppText>
-              {activeEmergencyRequest ? (
-                "Arriving in 5-8 min"
-              ) : isLoadingParamedicsNearby ? (
-                <ActivityIndicator size="small" color="#0D9488" />
-              ) : (
-                `${paramedicsNearby?.length || 0} Medics nearby`
-              )}
-            </AppText>
-          </View>
-
-          <EmergencyMap activeEmergency={activeEmergencyRequest} />
+          <AppText>
+            {activeEmergencyRequest ? (
+              activeEmergencyRequest.paramedicName ?? "Paramedic on the way"
+            ) : isLoadingParamedicsNearby ? (
+              <ActivityIndicator size="small" color="#0D9488" />
+            ) : (
+              `${paramedicsNearby?.length || 0} Medics nearby`
+            )}
+          </AppText>
         </View>
+
+        <EmergencyMap
+          userLocation={userLocation}
+          paramedicLocation={paramedicLocation}
+          nearbyMedics={paramedicsNearby ?? []}
+          hasActiveEmergency={!!activeEmergencyRequest}
+        />
       </View>
 
       {/* ACTIVE REQUEST */}
@@ -571,7 +614,8 @@ const styles = StyleSheet.create({
   },
 
   mapContainer: {
-    borderRadius: 45,
+    width: "100%",
+    alignSelf: "stretch",
     alignItems: "center",
     gap: 9,
     marginBottom: 25,

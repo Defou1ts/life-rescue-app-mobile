@@ -1,80 +1,82 @@
-// src/components/emergency-map.tsx
+import { useMemo } from "react";
 
-import { ActiveEmergency } from "@/api/hooks/useGetActiveEmergencyRequest";
-import { useParamedicsNearby } from "@/api/hooks/useParamedicsNeaby";
-import { useUserLocation } from "@/hooks/useUserLocation";
-
-import { signalRService } from "@/services/signalr";
-
-import { useEffect, useMemo, useRef, useState } from "react";
-
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
-
+import { useDrivingRoute } from "@/hooks/useDrivingRoute";
+import type { Coordinates } from "@/types/emergency";
+import { formatDrivingEta } from "@/utils/fetchDrivingRoute";
+import {
+  ActivityIndicator,
+  Dimensions,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { WebView } from "react-native-webview";
 
-const USE_MOCK_LOCATION = false;
-
-const MOCK_LOCATION = {
-  latitude: 53.9023,
-  longitude: 27.5619,
-};
-
-type Coords = {
-  latitude: number;
-  longitude: number;
-};
+const MAP_HEIGHT = 300;
+const MAP_WIDTH = Dimensions.get("window").width - 84;
 
 type Props = {
-  activeEmergency?: ActiveEmergency | null;
+  userLocation: Coordinates | null;
+  paramedicLocation: Coordinates | null;
+  nearbyMedics?: Coordinates[];
+  hasActiveEmergency?: boolean;
+  isLoading?: boolean;
 };
 
-export const EmergencyMap = ({ activeEmergency }: Props) => {
-  const webViewRef = useRef<WebView>(null);
+/**
+ * Round to N decimals so small GPS float jitter doesn't regenerate
+ * the HTML string and cause a WebView reload every few seconds.
+ */
+const roundCoord = (v: number, decimals = 5) =>
+  Math.round(v * 10 ** decimals) / 10 ** decimals;
 
-  const { mutateAsync: fetchParamedics, isPending } = useParamedicsNearby();
+const fallbackEta = (from: Coordinates, to: Coordinates): string => {
+  const R = 6371;
+  const dLat = ((to.latitude - from.latitude) * Math.PI) / 180;
+  const dLon = ((to.longitude - from.longitude) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((from.latitude * Math.PI) / 180) *
+      Math.cos((to.latitude * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const distance = R * c;
+  const minutes = Math.max(1, Math.round((distance / 40) * 60));
+  return `${minutes}-${minutes + 3} min`;
+};
 
-  const [loading, setLoading] = useState(true);
-
-  const { userLocation } = useUserLocation();
-
-  const [nearbyMedics, setNearbyMedics] = useState<Coords[]>([]);
-
-  const [paramedicLocation, setParamedicLocation] = useState<Coords | null>(
-    null,
-  );
-
-  const [estimatedArrival, setEstimatedArrival] = useState<string | null>(null);
-
-  /**
-   * WebView + Leaflet is sensitive to frequent source reloads.
-   * We normalize coords/arrays to avoid regenerating HTML for tiny float jitter.
-   */
-  const roundCoord = (v: number, decimals = 5) =>
-    Math.round(v * 10 ** decimals) / 10 ** decimals;
-
+export const EmergencyMap = ({
+  userLocation,
+  paramedicLocation,
+  nearbyMedics = [],
+  hasActiveEmergency = false,
+  isLoading = false,
+}: Props) => {
   const normalizedUser = useMemo(() => {
     if (!userLocation) return null;
     return {
-      latitude: roundCoord(userLocation.latitude, 5),
-      longitude: roundCoord(userLocation.longitude, 5),
+      latitude: roundCoord(userLocation.latitude),
+      longitude: roundCoord(userLocation.longitude),
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userLocation?.latitude, userLocation?.longitude]);
 
   const normalizedParamedic = useMemo(() => {
     if (!paramedicLocation) return null;
     return {
-      latitude: roundCoord(paramedicLocation.latitude, 5),
-      longitude: roundCoord(paramedicLocation.longitude, 5),
+      latitude: roundCoord(paramedicLocation.latitude),
+      longitude: roundCoord(paramedicLocation.longitude),
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paramedicLocation?.latitude, paramedicLocation?.longitude]);
 
   const nearbyMedicsKey = useMemo(() => {
-    if (!nearbyMedics?.length) return "";
-    // stable ordering + rounding so small float noise doesn't reload map
+    if (!nearbyMedics.length) return "";
     const normalized = nearbyMedics
       .map((m) => ({
-        latitude: roundCoord(m.latitude, 5),
-        longitude: roundCoord(m.longitude, 5),
+        latitude: roundCoord(m.latitude),
+        longitude: roundCoord(m.longitude),
       }))
       .sort((a, b) => {
         if (a.latitude !== b.latitude) return a.latitude - b.latitude;
@@ -84,129 +86,97 @@ export const EmergencyMap = ({ activeEmergency }: Props) => {
     return normalized.map((m) => `${m.latitude},${m.longitude}`).join("|");
   }, [nearbyMedics]);
 
-  useEffect(() => {
-    if (userLocation) {
-      initialize();
-    }
-  }, [userLocation]);
+  const { route } = useDrivingRoute(normalizedParamedic, normalizedUser);
 
-  useEffect(() => {
-    signalRService.onReceiveParamedicLocation = (payload) => {
-      if (payload.emergencyId !== activeEmergency?.id) {
-        return;
-      }
-
-      setParamedicLocation(payload.paramedicLocation);
-    };
-
-    return () => {
-      signalRService.onReceiveParamedicLocation = null;
-    };
-  }, [activeEmergency?.id]);
-
-  useEffect(() => {
-    if (!paramedicLocation || !userLocation) {
-      return;
-    }
-
-    setEstimatedArrival(calculateETA(paramedicLocation, userLocation));
-  }, [paramedicLocation, userLocation]);
-
-  const initialize = async () => {
-    try {
-      if (userLocation) {
-        const medics = await fetchParamedics({
-          latitude: userLocation.latitude,
-
-          longitude: userLocation.longitude,
-        });
-
-        // avoid state updates if the list is effectively the same
-        const next = medics ?? [];
-        setNearbyMedics((prev) => {
-          if (!prev?.length && !next.length) return prev;
-          const prevKey = prev
-            .map((m) => `${roundCoord(m.latitude, 5)},${roundCoord(m.longitude, 5)}`)
-            .sort()
-            .join("|");
-          const nextKey = next
-            .map((m) => `${roundCoord(m.latitude, 5)},${roundCoord(m.longitude, 5)}`)
-            .sort()
-            .join("|");
-          return prevKey === nextKey ? prev : next;
-        });
-      }
-    } catch {
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const calculateETA = (from: Coords, to: Coords) => {
-    const R = 6371;
-
-    const dLat = ((to.latitude - from.latitude) * Math.PI) / 180;
-
-    const dLon = ((to.longitude - from.longitude) * Math.PI) / 180;
-
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos((from.latitude * Math.PI) / 180) *
-        Math.cos((to.latitude * Math.PI) / 180) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
-
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-    const distance = R * c;
-
-    const etaMinutes = Math.max(1, Math.round((distance / 40) * 60));
-
-    return `${etaMinutes}-${etaMinutes + 3} min`;
-  };
-
-  const html = useMemo(() => {
-    if (!normalizedUser) {
+  const routeKey = useMemo(() => {
+    if (!route) {
       return null;
     }
 
-    const nearbyMarkersJS = nearbyMedicsKey
-      ? nearbyMedicsKey
-          .split("|")
-          .filter(Boolean)
-          .map((pair) => {
-            const [lat, lng] = pair.split(",").map(Number);
-            return `
-              L.marker([${lat}, ${lng}])
-                .addTo(map)
-                .bindPopup('Nearby paramedic');
-            `;
-          })
-          .join("\n")
-      : "";
+    const first = route.coordinates[0];
+    const last = route.coordinates[route.coordinates.length - 1];
 
-    const activeParamedicJS =
-      activeEmergency && normalizedParamedic
-        ? `
-        L.marker([${normalizedParamedic.latitude}, ${normalizedParamedic.longitude}])
+    return `${route.coordinates.length}:${first.latitude},${first.longitude}:${last.latitude},${last.longitude}:${route.durationSeconds}`;
+  }, [route]);
+
+  const estimatedArrival =
+    normalizedParamedic && normalizedUser
+      ? route
+        ? formatDrivingEta(route.durationSeconds)
+        : fallbackEta(normalizedParamedic, normalizedUser)
+      : null;
+
+  const html = useMemo(() => {
+    if (!normalizedUser) return null;
+
+    const nearbyMarkersJS =
+      !hasActiveEmergency && nearbyMedicsKey
+        ? nearbyMedicsKey
+            .split("|")
+            .filter(Boolean)
+            .map((pair) => {
+              const [lat, lng] = pair.split(",").map(Number);
+              return `
+        L.circleMarker(
+          [${lat}, ${lng}],
+          {
+            radius: 7,
+            color: '#047857',
+            weight: 2,
+            opacity: 1,
+            fillColor: '#6EE7B7',
+            fillOpacity: 0.9
+          }
+        )
           .addTo(map)
-          .bindPopup('Assigned paramedic');
-
-        var routeLine = L.polyline([
-          [${normalizedUser.latitude}, ${normalizedUser.longitude}],
-          [${normalizedParamedic.latitude}, ${normalizedParamedic.longitude}]
-        ], { color: '#0D9488', weight: 4 }).addTo(map);
-
-        map.fitBounds(routeLine.getBounds(), { padding: [40, 40] });
-      `
+          .bindPopup('Nearby paramedic');
+      `;
+            })
+            .join("\n")
         : "";
 
-    /**
-     * Always show nearby medics.
-     * When activeEmergency exists and paramedicLocation arrives — also draw
-     * the assigned paramedic marker + route line on top.
-     */
-    const markersJS = `${nearbyMarkersJS}\n${activeParamedicJS}`;
+    const paramedicJS = normalizedParamedic
+      ? (() => {
+          const routeCoords =
+            route && route.coordinates.length >= 2
+              ? route.coordinates.map(({ latitude, longitude }) => [
+                  latitude,
+                  longitude,
+                ])
+              : [
+                  [
+                    normalizedParamedic.latitude,
+                    normalizedParamedic.longitude,
+                  ],
+                  [normalizedUser.latitude, normalizedUser.longitude],
+                ];
+
+          return `
+        L.circleMarker(
+          [${normalizedParamedic.latitude}, ${normalizedParamedic.longitude}],
+          {
+            radius: 9,
+            color: '#047857',
+            weight: 3,
+            opacity: 1,
+            fillColor: '#34D399',
+            fillOpacity: 0.95
+          }
+        )
+          .addTo(map)
+          .bindPopup('Paramedic');
+
+        var routeCoords = ${JSON.stringify(routeCoords)};
+        var routeLine = L.polyline(routeCoords, {
+          color: '#0D9488',
+          weight: 5,
+          opacity: 0.9
+        }).addTo(map);
+
+        map.fitBounds(routeLine.getBounds(), { padding: [50, 50] });
+      `;
+        })()
+      : "";
 
     return `<!DOCTYPE html>
 <html>
@@ -214,26 +184,51 @@ export const EmergencyMap = ({ activeEmergency }: Props) => {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-      html, body, #map { margin: 0; padding: 0; width: 100%; height: 100%; }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; width: 100%; height: ${MAP_HEIGHT}px; overflow: hidden; }
+      #map { width: 100%; height: ${MAP_HEIGHT}px; }
+      .leaflet-control-attribution { display: none; }
+      .leaflet-control-zoom { display: none; }
     </style>
   </head>
   <body>
     <div id="map"></div>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
+      try {
+        L.Icon.Default.mergeOptions({
+          iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+          iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+          shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png'
+        });
+      } catch (e) {}
+
       var map = L.map('map', { zoomControl: false })
-        .setView([${normalizedUser.latitude}, ${normalizedUser.longitude}], 12);
+        .setView([${normalizedUser.latitude}, ${normalizedUser.longitude}], 14);
 
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors'
+        maxZoom: 19,
+        keepBuffer: 4
       }).addTo(map);
 
-      L.marker([${normalizedUser.latitude}, ${normalizedUser.longitude}])
+      L.circleMarker(
+        [${normalizedUser.latitude}, ${normalizedUser.longitude}],
+        {
+          radius: 9,
+          color: '#2563EB',
+          weight: 3,
+          opacity: 1,
+          fillColor: '#60A5FA',
+          fillOpacity: 0.95
+        }
+      )
         .addTo(map)
-        .bindPopup('You')
-        .openPopup();
+        .bindPopup('You');
 
-      ${markersJS}
+      ${nearbyMarkersJS}
+      ${paramedicJS}
+
+      setTimeout(function() { map.invalidateSize(); }, 300);
     </script>
   </body>
 </html>`;
@@ -241,13 +236,14 @@ export const EmergencyMap = ({ activeEmergency }: Props) => {
   }, [
     normalizedUser?.latitude,
     normalizedUser?.longitude,
-    nearbyMedicsKey,
-    activeEmergency?.id,
     normalizedParamedic?.latitude,
     normalizedParamedic?.longitude,
+    nearbyMedicsKey,
+    hasActiveEmergency,
+    routeKey,
   ]);
 
-  if (loading || isPending || !userLocation || !html) {
+  if (!html) {
     return (
       <View style={styles.loader}>
         <ActivityIndicator size="large" />
@@ -256,19 +252,38 @@ export const EmergencyMap = ({ activeEmergency }: Props) => {
   }
 
   return (
-    <View style={styles.container}>
-      <WebView
-        ref={webViewRef}
-        originWhitelist={["*"]}
-        source={{ html }}
-        style={styles.map}
-        javaScriptEnabled
-        domStorageEnabled
-      />
+    <View style={styles.wrapper}>
+      <View style={styles.container}>
+        <WebView
+          originWhitelist={["*"]}
+          source={{ html }}
+          style={styles.map}
+          javaScriptEnabled
+          domStorageEnabled
+          allowFileAccess
+          allowsFullscreenVideo={false}
+          mixedContentMode="always"
+          cacheEnabled
+          cacheMode="LOAD_DEFAULT"
+          setSupportMultipleWindows={false}
+          scrollEnabled={false}
+          bounces={false}
+        />
+      </View>
 
-      {activeEmergency && estimatedArrival && (
+      {hasActiveEmergency && !!estimatedArrival && (
         <View style={styles.etaContainer}>
-          <Text style={styles.etaText}>Arriving in {estimatedArrival}</Text>
+          <View style={styles.etaDot} />
+          <View>
+            <Text style={styles.etaTitle}>Estimated Arrival</Text>
+            <Text style={styles.etaText}>{estimatedArrival}</Text>
+          </View>
+        </View>
+      )}
+
+      {isLoading && (
+        <View style={styles.statusOverlay}>
+          <ActivityIndicator size="small" color="#0D9488" />
         </View>
       )}
     </View>
@@ -276,57 +291,73 @@ export const EmergencyMap = ({ activeEmergency }: Props) => {
 };
 
 const styles = StyleSheet.create({
+  wrapper: {
+    width: MAP_WIDTH,
+    height: MAP_HEIGHT,
+    alignSelf: "center",
+  },
   container: {
-    width: 400,
-    height: 300,
+    width: MAP_WIDTH,
+    height: MAP_HEIGHT,
+    borderRadius: 28,
     overflow: "hidden",
+    backgroundColor: "#F3F4F6",
   },
-
   map: {
-    flex: 1,
+    width: MAP_WIDTH,
+    height: MAP_HEIGHT,
+    backgroundColor: "transparent",
   },
-
   loader: {
-    width: 250,
-    height: 188,
+    width: MAP_WIDTH,
+    height: MAP_HEIGHT,
+    alignSelf: "center",
     justifyContent: "center",
     alignItems: "center",
   },
-
+  statusOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    width: MAP_WIDTH,
+    height: MAP_HEIGHT,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.78)",
+    borderRadius: 28,
+  },
   etaContainer: {
     position: "absolute",
-
-    bottom: 10,
-
+    bottom: 18,
     alignSelf: "center",
-
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
     backgroundColor: "#FFFFFF",
-
-    paddingHorizontal: 14,
-
-    paddingVertical: 8,
-
-    borderRadius: 20,
-
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 999,
     shadowColor: "#000",
-
-    shadowOffset: {
-      width: 2,
-      height: 2,
-    },
-
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.12,
-
-    shadowRadius: 6,
-
-    elevation: 4,
+    shadowRadius: 12,
+    elevation: 8,
   },
-
+  etaDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 999,
+    backgroundColor: "#22C55E",
+  },
+  etaTitle: {
+    fontSize: 12,
+    color: "#6B7280",
+    fontWeight: "500",
+  },
   etaText: {
-    color: "#0D9488",
-
-    fontWeight: "600",
-
-    fontSize: 14,
+    fontSize: 16,
+    color: "#111827",
+    fontWeight: "700",
   },
 });
+
