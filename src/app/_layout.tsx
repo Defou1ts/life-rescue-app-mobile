@@ -12,6 +12,9 @@ export const ROOT_SCREEN_NAMES = {
   NEW_PASSWORD: "newPassword",
   REQUEST: "request",
   TABS: "(tabs)",
+  SUBSCRIPTION_SUCCESS: "subscription-success",
+  SUBSCRIPTION_CANCEL: "subscription-cancel",
+  SUBSCRIPTION: "subscription",
 } as const;
 
 export default function RootLayout() {
@@ -56,6 +59,18 @@ export default function RootLayout() {
           <Stack.Screen
             name={ROOT_SCREEN_NAMES.TABS}
             options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROOT_SCREEN_NAMES.SUBSCRIPTION}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROOT_SCREEN_NAMES.SUBSCRIPTION_SUCCESS}
+            options={{ title: "Subscription Success" }}
+          />
+          <Stack.Screen
+            name={ROOT_SCREEN_NAMES.SUBSCRIPTION_CANCEL}
+            options={{ title: "Subscription Canceled" }}
           />
         </Stack>
       </QueryClientProvider>

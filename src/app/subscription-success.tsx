@@ -1,9 +1,12 @@
+import { queryClient } from "@/config/queryClient";
 import { router } from "expo-router";
 import { useEffect } from "react";
 import { Text, View } from "react-native";
 
 export default function SubscriptionSuccessScreen() {
   useEffect(() => {
+    queryClient.invalidateQueries({ queryKey: ["hasSubscription"] });
+
     const timeout = setTimeout(() => {
       router.replace("/(tabs)");
     }, 1500);
